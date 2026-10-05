@@ -17,7 +17,7 @@ import { ensurePdf, locate } from './ingest/pagebox.js';
 
 const run = promisify(execFile);
 const REDIRECT = new URL(redirectUri());
-const PORT = Number(process.env.PORT || 8080);
+const PORT = process.env.PORT || 8080;
 process.env.PORT = String(PORT);
 const PUBLIC = path.resolve('public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
@@ -201,4 +201,4 @@ const server = http.createServer(async (req, res) => {
 });
 
 const HOST = '0.0.0.0';
-server.listen(PORT, HOST, () => console.log(`ROSS on ${process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://127.0.0.1:${PORT}`}${process.env.APP_PASSWORD ? ' (password on)' : ''}  (Clio: ${clioMode()}, AI: ${process.env.ANTHROPIC_API_KEY ? 'on' : 'off'})`));
+server.listen(PORT, HOST, () => console.log(`ROSS on ${process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `${HOST}:${PORT}`}${process.env.APP_PASSWORD ? ' (password on)' : ''}  (Clio: ${clioMode()}, AI: ${process.env.ANTHROPIC_API_KEY ? 'on' : 'off'})`));
