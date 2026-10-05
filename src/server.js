@@ -23,6 +23,7 @@ const PUBLIC = path.resolve('public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
 let state = { caseFile: null, digest: null, syncing: null, progress: null };
+let syncTask = null;
 
 async function ensureCase() {
   if (state.digest) return state;
@@ -33,13 +34,26 @@ async function ensureCase() {
 }
 
 async function doSync() {
-  state.syncing ??= (async () => {
+  if (syncTask) return syncTask;
+  state.lastError = null;
+  const task = (async () => {
     try {
       state.caseFile = await syncMatter({ onProgress: (...a) => (state.progress = a) });
+      state.progress = ['digest'];
       state.digest = await buildDigest(state.caseFile);
-    } finally { state.syncing = null; state.progress = null; }
+    } finally {
+      state.syncing = null;
+      state.progress = null;
+      syncTask = null;
+    }
   })();
-  return state.syncing;
+  syncTask = task;
+  state.syncing = task;
+  return task;
+}
+
+function startBackgroundSync() {
+  doSync().catch(e => { state.lastError = e.message; console.error(e); });
 }
 
 const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -61,10 +75,12 @@ const routes = [
     json(res, 200, { ...digest, changes });
   }],
   ['POST', /^\/api\/sync$/, async (req, res) => {
-    await doSync();
-    json(res, 200, { ok: true, syncedAt: state.caseFile.syncedAt });
+    startBackgroundSync();
+    json(res, 202, { ok: true, syncing: true });
   }],
-  ['GET', /^\/api\/sync\/progress$/, async (req, res) => json(res, 200, { syncing: !!state.syncing, progress: state.progress })],
+  ['GET', /^\/api\/sync\/progress$/, async (req, res) => json(res, 200, {
+    syncing: !!state.syncing, progress: state.progress, ready: !!state.digest, error: state.lastError || null,
+  })],
   ['POST', /^\/api\/seen$/, async (req, res) => { const { caseFile } = await ensureCase(); markSeen(caseFile, userKey(req)); json(res, 200, { ok: true }); }],
   ['GET', /^\/api\/doc\/([\w:%]+)\/pages$/, async (req, res, m) => {
     const { caseFile } = await ensureCase();
@@ -151,14 +167,21 @@ const routes = [
     catch (e) { res.writeHead(302, { location: `/?clio_error=${encodeURIComponent(e.message.slice(0, 200))}` }); return res.end(); }
     // Fresh pull from the real Clio account.
     state = { caseFile: null, digest: null, syncing: null, progress: null };
-    doSync().catch(e => (state.lastError = e.message));
+    startBackgroundSync();
     res.writeHead(302, { location: '/case?connected=1' }); res.end();
   }],
   ['POST', /^\/api\/clio\/demo$/, async (req, res) => {
     kv.set('clio_mode', 'replica');
+    const previousSync = syncTask;
     state = { caseFile: null, digest: null, syncing: null, progress: null };
-    await doSync();
-    json(res, 200, { ok: true, mode: 'replica', matter: state.caseFile.matter.displayNumber });
+    if (previousSync) state.syncing = previousSync;
+    const startDemo = async () => {
+      if (previousSync) await previousSync.catch(() => {});
+      state = { caseFile: null, digest: null, syncing: null, progress: null };
+      startBackgroundSync();
+    };
+    startDemo().catch(e => { state.lastError = e.message; console.error(e); });
+    json(res, 202, { ok: true, mode: 'replica' });
   }],
   ['GET', /^\/api\/clio\/status$/, async (req, res) => json(res, 200, {
     mode: clioMode(), credentials: hasCredentials(), base: CLIO_BASE, redirectUri: redirectUri(),

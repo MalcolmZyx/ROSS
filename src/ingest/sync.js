@@ -61,24 +61,22 @@ export async function syncMatter({ onProgress = () => {} } = {}) {
 
   const docs = [];
   let photo = null;
-  // Fast path: the same PDFs ship in fixtures/, so use a local copy when name and size match Clio; download the rest in parallel.
+  // Use a local copy when available, but process only one PDF at a time to bound memory.
   const local = new Map();
   const walk = async dir => { for (const e of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
     const p = path.join(dir, e.name); if (e.isDirectory()) await walk(p); else local.set(e.name, p); } };
   await walk(path.resolve('fixtures'));
-  const bufs = await Promise.all(documents.map(async d => {
-    const p = local.get(d.name);
-    if (p) { const b = await fs.readFile(p); if (!d.size || b.length === d.size) return b; }
-    return clio.download(d.id);
-  }));
-  // Keep each PDF on disk so page images and highlights never re-download it from Clio.
   await fs.mkdir(path.resolve('data/pages'), { recursive: true });
-  await Promise.all(documents.map((d, i) => fs.writeFile(path.resolve('data/pages', `${d.id}.pdf`), bufs[i], { flag: 'wx' }).catch(() => {})));
-  const texts = await Promise.all(bufs.map(b => extractPdf(b)));
   for (const [i, d] of documents.entries()) {
     onProgress('documents', i + 1, documents.length, d.name);
-    const buf = bufs[i];
-    const text = texts[i];
+    const localPdf = local.get(d.name);
+    let buf = localPdf ? await fs.readFile(localPdf) : null;
+    if (!buf || (d.size && buf.length !== d.size)) buf = await clio.download(d.id);
+    // Keep each PDF on disk so page images and highlights never re-download it from Clio.
+    await fs.writeFile(path.resolve('data/pages', `${d.id}.pdf`), buf, { flag: 'wx' }).catch(() => {});
+    const text = await extractPdf(buf, {
+      onProgress: (page, total) => onProgress('documents', i + 1, documents.length, d.name, page, total),
+    });
     docs.push({ id: `doc:${d.id}`, clioId: d.id, name: d.name, folder: d.parent?.name, receivedAt: (d.received_at || d.created_at)?.slice(0, 10),
       size: d.size, sha256: text.sha256, pageCount: text.pageCount, ocrPages: text.pages.filter(p => p.method === 'ocr').length, clioUrl: link('documents') });
     items.push({ id: `doc:${d.id}`, kind: 'document', date: (d.received_at || d.created_at)?.slice(0, 10), title: prettyDocName(d.name),

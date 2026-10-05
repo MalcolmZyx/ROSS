@@ -15,6 +15,19 @@ const tidyTask = (t) => String(t || '').replace(/^By [^:]+:\s*/, '').replace(/^[
 // ---------- Boot ----------
 async function boot() {
   showClioError();
+  let progress = await api('/api/sync/progress');
+  while (progress.syncing) {
+    const detail = progress.progress;
+    const message = $('#app .c-loading div:last-child');
+    if (message) {
+      message.textContent = detail?.[0] === 'documents'
+        ? `Reading document ${detail[1]} of ${detail[2]}: ${detail[3]}${detail[4] && detail[5] ? ` · page ${detail[4]} of ${detail[5]}` : ''}`
+        : detail?.[0] === 'digest' ? 'Preparing the case brief…' : 'Preparing case data…';
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    progress = await api('/api/sync/progress');
+  }
+  if (progress.error) throw new Error(progress.error);
   const [data, clio, shares] = await Promise.all([
     api('/api/case'),
     api('/api/clio/status').catch(() => null),
@@ -526,6 +539,16 @@ boot().catch(e => {
     button.disabled = true; button.textContent = 'Loading demo…';
     try {
       await api('/api/clio/demo', { method: 'POST' });
+      while (true) {
+        const progress = await api('/api/sync/progress');
+        if (progress.error) throw new Error(progress.error);
+        const detail = progress.progress;
+        if (detail?.[0] === 'documents') {
+          button.textContent = `Reading PDF ${detail[1]} of ${detail[2]}…`;
+        }
+        if (progress.ready && !progress.syncing) break;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
       location.href = '/case?demo=1';
     } catch (demoError) {
       $('#case-load-error').textContent = `Demo mode failed: ${demoError.message}`;

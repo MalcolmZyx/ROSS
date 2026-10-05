@@ -100,6 +100,26 @@
   const day = (d) => { if (!d) return ''; const [y, m, dd] = d.slice(0, 10).split('-').map(Number); return `${MON[m - 1]} ${dd}, ${y}`; };
   const go = async (from, to) => { $(from).classList.add('out'); await wait(320); $(from).hidden = true; $(from).classList.remove('out'); $(to).hidden = false; };
   const mark = (k, st) => { const li = document.querySelector(`[data-k="${k}"]`); li.className = st; };
+  const progressText = (progress) => {
+    if (!progress) return 'Preparing case data…';
+    if (progress[0] === 'documents') {
+      const page = progress[4] && progress[5] ? ` · page ${progress[4]} of ${progress[5]}` : '';
+      return `Reading document ${progress[1]} of ${progress[2]}: ${progress[3]}${page}`;
+    }
+    if (progress[0] === 'digest') return 'Preparing the case brief…';
+    return progress[0] === 'contacts' ? 'Reading case contacts…' : 'Loading case data…';
+  };
+  const waitForSync = async () => {
+    while (true) {
+      const response = await fetch('/api/sync/progress');
+      const status = await response.json();
+      if (!response.ok) throw new Error(status.error || 'Could not check sync progress.');
+      if (status.error) throw new Error(status.error);
+      $('#who').textContent = progressText(status.progress);
+      if (status.ready && !status.syncing) return;
+      await wait(1000);
+    }
+  };
   const query = new URLSearchParams(location.search);
   if (query.has('clio_error')) {
     $('#connection-error').hidden = false;
@@ -112,10 +132,16 @@
       const response = await fetch('/api/clio/demo', { method: 'POST' });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not load the demo data.');
+      await go('#s1', '#s2');
+      mark('auth', 'done'); mark('matter', 'done'); mark('read', 'doing');
+      $('#who').textContent = 'Preparing the Sapini demo…';
+      await waitForSync();
+      mark('read', 'done'); mark('ready', 'done');
       location.href = '/case?demo=1';
     } catch (e) {
       error.textContent = e.message;
       error.hidden = false;
+      if (!$('#s2').hidden) await go('#s2', '#s1');
       button.disabled = false; button.textContent = 'Demo mode';
     }
   };
@@ -124,17 +150,26 @@
     const status = await fetch('/api/clio/status').then(r => r.json()).catch(() => null);
     // No saved Clio login on this server: do the real OAuth sign-in.
     if (!status || status.mode !== 'live') { location.href = '/auth/clio'; return; }
-    await go('#s1', '#s2');
-    mark('auth', 'doing'); await wait(500);
-    $('#who').textContent = status.connectedAs ? `as ${status.connectedAs}` : 'Saved Clio login';
-    mark('auth', 'done'); mark('matter', 'doing'); await wait(450);
-    mark('matter', 'done'); mark('read', 'doing');
-    const t0 = Date.now();
-    const data = await fetch('/api/case').then(r => r.json());
-    await wait(Math.max(0, 900 - (Date.now() - t0)));
-    $('[data-k="read"]').lastChild.textContent = `Read ${data.meta.items} entries and ${data.meta.documents.length} documents`;
-    mark('read', 'done'); mark('ready', 'doing'); await wait(400); mark('ready', 'done'); await wait(450);
-    showPicker(status, data);
+    try {
+      await go('#s1', '#s2');
+      mark('auth', 'doing');
+      $('#who').textContent = status.connectedAs ? `as ${status.connectedAs}` : 'Saved Clio login';
+      mark('auth', 'done'); mark('matter', 'done'); mark('read', 'doing');
+      const start = await fetch('/api/sync', { method: 'POST' });
+      const startResult = await start.json();
+      if (!start.ok) throw new Error(startResult.error || 'Could not start the Clio sync.');
+      await waitForSync();
+      const dataResponse = await fetch('/api/case');
+      const data = await dataResponse.json();
+      if (!dataResponse.ok) throw new Error(data.error || 'Could not load the Clio matter.');
+      $('[data-k="read"]').lastChild.textContent = `Read ${data.meta.items} entries and ${data.meta.documents.length} documents`;
+      mark('read', 'done'); mark('ready', 'doing'); await wait(400); mark('ready', 'done'); await wait(450);
+      showPicker(status, data);
+    } catch (e) {
+      $('#connection-error-detail').textContent = e.message;
+      $('#connection-error').hidden = false;
+      if (!$('#s2').hidden) await go('#s2', '#s1');
+    }
   };
 
   async function showPicker(status, data) {
