@@ -18,7 +18,7 @@ npm start                      # http://127.0.0.1:8080
 
 Open http://127.0.0.1:8080. It starts on the bundled Clio replica of the Sapini file. Click **Connect Clio**, approve in Clio, and Clio sends you back to `http://127.0.0.1:8080/callback`; CaseLight then re-reads the matter from your real Clio account (GET only). The server listens on `PORT` (default `8080`), so the callback URL registered in your Clio app must match `CLIO_REDIRECT_URI`.
 
-Put the `Sapini documents` folder from the Swans case-materials zip into `fixtures/` (the replica serves those PDFs as Clio downloads; live mode downloads them from Clio instead).
+The local Clio replica reads `sapini-clio-data.json` and its PDFs from `Slides & Materials - Shared w- Participants/Sapini Case Materials/` by default (or `fixtures/` if that contains the JSON). It serves PDF bytes through the same Clio document-download endpoint used by live sync, so demo mode uses the same ingestion, OCR, citations and document viewer. Include this folder in the Railway deployment.
 
 Requires Node 22.5+ (for `node:sqlite`) and `poppler-utils` + `tesseract-ocr` on the PATH (`apt install poppler-utils tesseract-ocr`, `brew install poppler tesseract`).
 
@@ -27,7 +27,7 @@ Requires Node 22.5+ (for `node:sqlite`) and `poppler-utils` + `tesseract-ocr` on
 | `CLIO_CLIENT_ID`, `CLIO_CLIENT_SECRET` | Your Clio app's key and secret (developers.clio.com). Keep them in `.env`, which git ignores. |
 | `CLIO_REDIRECT_URI` | Must match the Clio app exactly. Default `http://127.0.0.1:8080/callback`. |
 | `CLIO_BASE` | Region host: `https://app.clio.com` (default), `eu.app.clio.com`, `ca.app.clio.com`, `au.app.clio.com`. |
-| `CLIO_MODE` | `auto` (default: replica until you connect, then live), `live`, or `replica`. `CLIO_ACCESS_TOKEN` skips OAuth. |
+| `CLIO_MODE` | `auto` (default: replica until you connect, then live), `live`, or `replica`. `CLIO_ACCESS_TOKEN` skips OAuth. Choosing demo mode temporarily overrides this to `replica`. |
 | `CLIO_MATTER_ID` / `CLIO_MATTER_QUERY` | Which matter to read (default: search for "Sapini"). |
 | `ANTHROPIC_API_KEY` | Switches digestion and Ask from the offline engine to Claude. |
 | `FIRM_NAME`, `FIRM_EMAIL` | Shown to doctors on their page and used by their Reply button (default: the responsible attorney and their Clio email). |
@@ -46,7 +46,7 @@ railway up --no-gitignore          # ships the Sapini PDFs and OCR cache; .railw
 railway domain                     # gives https://<name>.up.railway.app
 ```
 
-Set these service variables in Railway: `CLIO_CLIENT_ID`, `CLIO_CLIENT_SECRET`, `APP_PASSWORD` (the attorney side asks for it; doctor links stay open), and optionally `ANTHROPIC_API_KEY`. Leave `CLIO_REDIRECT_URI` unset: on Railway it defaults to `https://$RAILWAY_PUBLIC_DOMAIN/callback`. Add that exact URL to the Clio app's redirect URIs in the Clio developer portal, or Clio rejects the login. The Dockerfile installs poppler and tesseract. SQLite lives in the container, so a redeploy forgets the Clio connection and share links; mount a volume and set `DB_FILE=/data/caselight.db` to keep them.
+Set these service variables in Railway: `CLIO_CLIENT_ID`, `CLIO_CLIENT_SECRET`, `APP_PASSWORD` (the attorney side asks for it; doctor links stay open), and optionally `ANTHROPIC_API_KEY`. Leave `CLIO_REDIRECT_URI` unset: on Railway it defaults to `https://$RAILWAY_PUBLIC_DOMAIN/callback`. Add that exact URL to the Clio app's redirect URIs in the Clio developer portal, or Clio rejects the login. If OAuth or the live sync fails, the app offers **Enter demo mode instead?**; demo mode feeds the included Sapini case and PDFs through the local Clio v4 replica's same read/download endpoints. The Dockerfile installs poppler and tesseract. SQLite lives in the container, so a redeploy forgets the Clio connection and share links; mount a volume and set `DB_FILE=/data/caselight.db` to keep them.
 
 ### Ask
 

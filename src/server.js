@@ -140,18 +140,25 @@ const routes = [
 
   // ---------- Clio OAuth ----------
   ['GET', /^\/auth\/clio$/, async (req, res) => {
+    kv.set('clio_mode', null);
     const st = randomBytes(12).toString('hex'); kv.set('oauth_state', st);
     res.writeHead(302, { location: authorizeUrl(st) }); res.end();
   }],
   ['GET', new RegExp(`^(${REDIRECT.pathname.replace(/[/.]/g, '\\$&')}|/auth/clio/callback)$`), async (req, res, m, url) => {
     if (url.searchParams.get('error')) { res.writeHead(302, { location: `/?clio_error=${encodeURIComponent(url.searchParams.get('error_description') || url.searchParams.get('error'))}` }); return res.end(); }
-    if (url.searchParams.get('state') !== kv.get('oauth_state')) return json(res, 400, { error: 'OAuth state mismatch. Start again from Connect Clio.' });
+    if (url.searchParams.get('state') !== kv.get('oauth_state')) { res.writeHead(302, { location: `/?clio_error=${encodeURIComponent('OAuth state mismatch. Start again from Connect Clio.')}` }); return res.end(); }
     try { await exchangeCode(url.searchParams.get('code')); }
     catch (e) { res.writeHead(302, { location: `/?clio_error=${encodeURIComponent(e.message.slice(0, 200))}` }); return res.end(); }
     // Fresh pull from the real Clio account.
     state = { caseFile: null, digest: null, syncing: null, progress: null };
     doSync().catch(e => (state.lastError = e.message));
     res.writeHead(302, { location: '/case?connected=1' }); res.end();
+  }],
+  ['POST', /^\/api\/clio\/demo$/, async (req, res) => {
+    kv.set('clio_mode', 'replica');
+    state = { caseFile: null, digest: null, syncing: null, progress: null };
+    await doSync();
+    json(res, 200, { ok: true, mode: 'replica', matter: state.caseFile.matter.displayNumber });
   }],
   ['GET', /^\/api\/clio\/status$/, async (req, res) => json(res, 200, {
     mode: clioMode(), credentials: hasCredentials(), base: CLIO_BASE, redirectUri: redirectUri(),

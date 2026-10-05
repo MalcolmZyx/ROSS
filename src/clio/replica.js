@@ -1,6 +1,6 @@
 // Local Clio Manage v4 replica, read-only.
 //
-// Swans ships the Sapini matter as Clio v4 *request bodies* (fixtures/sapini-clio-data.json).
+// Swans ships the Sapini matter as Clio v4 *request bodies* (sapini-clio-data.json).
 // This module replays those bodies into an in-memory Clio and answers the same GET endpoints,
 // with the same response envelope ({ data, meta.paging.next }), that app.clio.com does.
 // CaseLight never knows which one it is talking to: point CLIO_BASE_URL at app.clio.com with an
@@ -9,7 +9,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const FIXTURES = process.env.REPLICA_FIXTURES_DIR || path.resolve('fixtures');
+const FIXTURE_DIR = path.resolve('Slides & Materials - Shared w- Participants/Sapini Case Materials');
+const FIXTURES = process.env.REPLICA_FIXTURES_DIR
+  || (fs.existsSync(path.join(FIXTURE_DIR, 'sapini-clio-data.json')) ? FIXTURE_DIR : path.resolve('fixtures'));
 const USER = { id: 344000001, name: 'Alex Rivera', email: 'arivera@cedarlaw.test', type: 'User' };
 
 function load() {

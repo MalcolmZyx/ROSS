@@ -520,5 +520,16 @@ function phone(v) {
 }
 
 boot().catch(e => {
-  $('#app').innerHTML = `<div class="c-loading"><b>Could not load the matter</b><div class="c-muted">${esc(e.message)}</div><a class="c-btn" href="/auth/clio">Connect Clio</a></div>`;
+  $('#app').innerHTML = `<div class="c-loading"><b>Connection failed</b><div class="c-muted" id="case-load-error">${esc(e.message)}</div><button class="c-btn" id="enter-demo">Enter demo mode instead?</button> <a class="c-btn" href="/auth/clio">Try Clio again</a></div>`;
+  $('#enter-demo').onclick = async () => {
+    const button = $('#enter-demo');
+    button.disabled = true; button.textContent = 'Loading demo…';
+    try {
+      await api('/api/clio/demo', { method: 'POST' });
+      location.href = '/case?demo=1';
+    } catch (demoError) {
+      $('#case-load-error').textContent = `Demo mode failed: ${demoError.message}`;
+      button.disabled = false; button.textContent = 'Enter demo mode instead?';
+    }
+  };
 });

@@ -13,6 +13,7 @@ export const hasToken = () => !!(process.env.CLIO_ACCESS_TOKEN || kv.get('clio_t
 export const disconnect = () => kv.set('clio_token', null);
 /** 'live' when told to, or in 'auto' once a Clio token exists; otherwise the local replica. */
 export const clioMode = () => {
+  if (kv.get('clio_mode') === 'replica') return 'replica';
   const m = process.env.CLIO_MODE || 'auto';
   return m === 'live' || (m === 'auto' && hasToken()) ? 'live' : 'replica';
 };

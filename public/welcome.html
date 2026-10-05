@@ -21,6 +21,10 @@
     .lead { font-size: 21px; color: var(--muted); margin: 18px auto 0; max-width: 520px; letter-spacing: -0.02em; }
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 54px; padding: 0 32px; margin-top: 36px; border: 0; border-radius: 27px; background: var(--accent); color: #fff; font: 500 17px var(--font); cursor: pointer; text-decoration: none; transition: background .2s, transform .15s; }
     .btn:hover { background: #0077ed; } .btn:active { transform: scale(.98); }
+    .connection-error { margin: 24px auto 0; max-width: 520px; padding: 18px; border-radius: 16px; background: #fff4f2; color: #8c1d18; font-size: 15px; }
+    .connection-error p { margin: 0; }
+    .connection-error .btn { margin-top: 12px; }
+    .connection-error .fine { margin-bottom: 0; color: #6e6e73; }
     .btn.dark { background: var(--ink); } .btn.dark:hover { background: #000; }
     .fine { margin-top: 18px; font-size: 13px; color: var(--faint); }
     .fine b { color: var(--ink); font-weight: 600; }
@@ -57,6 +61,11 @@
     <p class="lead">ROSS reads your matter in Clio and tells you what changed, what needs you, and where it says so.</p>
     <button class="btn" id="connect"><span class="clio">c</span>Connect Clio</button>
     <p class="fine"><b>Read-only.</b> ROSS can't create, edit or delete anything in Clio.</p>
+    <div class="connection-error" id="connection-error" role="alert" hidden>
+      <p><b>Connection failed.</b> <span id="connection-error-detail"></span></p>
+      <button class="btn dark" id="enter-demo">Enter demo mode instead?</button>
+      <p class="fine" id="demo-error" hidden></p>
+    </div>
   </section>
 
   <!-- 2 · Connecting (real checks against the server) -->
@@ -90,6 +99,25 @@
   const day = (d) => { if (!d) return ''; const [y, m, dd] = d.slice(0, 10).split('-').map(Number); return `${MON[m - 1]} ${dd}, ${y}`; };
   const go = async (from, to) => { $(from).classList.add('out'); await wait(320); $(from).hidden = true; $(from).classList.remove('out'); $(to).hidden = false; };
   const mark = (k, st) => { const li = document.querySelector(`[data-k="${k}"]`); li.className = st; };
+  const query = new URLSearchParams(location.search);
+  if (query.has('clio_error')) {
+    $('#connection-error').hidden = false;
+    $('#connection-error-detail').textContent = query.get('clio_error') || 'Please try again.';
+  }
+  $('#enter-demo').onclick = async () => {
+    const button = $('#enter-demo'), error = $('#demo-error');
+    button.disabled = true; button.textContent = 'Loading demo…'; error.hidden = true;
+    try {
+      const response = await fetch('/api/clio/demo', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not load the demo data.');
+      location.href = '/case?demo=1';
+    } catch (e) {
+      error.textContent = e.message;
+      error.hidden = false;
+      button.disabled = false; button.textContent = 'Enter demo mode instead?';
+    }
+  };
 
   $('#connect').onclick = async () => {
     const status = await fetch('/api/clio/status').then(r => r.json()).catch(() => null);
