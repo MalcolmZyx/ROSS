@@ -23,8 +23,9 @@
     .btn:hover { background: #0077ed; } .btn:active { transform: scale(.98); }
     .connection-error { margin: 24px auto 0; max-width: 520px; padding: 18px; border-radius: 16px; background: #fff4f2; color: #8c1d18; font-size: 15px; }
     .connection-error p { margin: 0; }
-    .connection-error .btn { margin-top: 12px; }
     .connection-error .fine { margin-bottom: 0; color: #6e6e73; }
+    .demo-btn { display: flex; margin: 12px auto 0; }
+    .demo-error { margin-top: 10px; color: #8c1d18; }
     .btn.dark { background: var(--ink); } .btn.dark:hover { background: #000; }
     .fine { margin-top: 18px; font-size: 13px; color: var(--faint); }
     .fine b { color: var(--ink); font-weight: 600; }
@@ -59,13 +60,13 @@
     <div class="brand">ROSS</div>
     <h1>Every case.<br>Explained in two minutes.</h1>
     <p class="lead">ROSS reads your matter in Clio and tells you what changed, what needs you, and where it says so.</p>
-    <button class="btn" id="connect"><span class="clio">c</span>Connect Clio</button>
+    <button class="btn" id="connect"><span class="clio">c</span>Login to Clio</button>
+    <button class="btn dark demo-btn" id="enter-demo">Demo mode</button>
     <p class="fine"><b>Read-only.</b> ROSS can't create, edit or delete anything in Clio.</p>
     <div class="connection-error" id="connection-error" role="alert" hidden>
       <p><b>Connection failed.</b> <span id="connection-error-detail"></span></p>
-      <button class="btn dark" id="enter-demo">Enter demo mode instead?</button>
-      <p class="fine" id="demo-error" hidden></p>
     </div>
+    <p class="fine demo-error" id="demo-error" role="alert" hidden></p>
   </section>
 
   <!-- 2 · Connecting (real checks against the server) -->
@@ -115,7 +116,7 @@
     } catch (e) {
       error.textContent = e.message;
       error.hidden = false;
-      button.disabled = false; button.textContent = 'Enter demo mode instead?';
+      button.disabled = false; button.textContent = 'Demo mode';
     }
   };
 
