@@ -5,9 +5,9 @@ import { kv } from '../db.js';
 // CLIO_BASE picks the region host (app / eu.app / ca.app / au.app .clio.com).
 export const CLIO_BASE = (process.env.CLIO_BASE || process.env.CLIO_AUTH_BASE || 'https://app.clio.com').replace(/\/+$/, '');
 const AUTH_BASE = CLIO_BASE;
-// Local: the 127.0.0.1:3000/callback registered on the Clio app. On Railway: the service's public domain.
+// Local: the 127.0.0.1:8080/callback registered on the Clio app. On Railway: the service's public domain.
 export const redirectUri = () => process.env.CLIO_REDIRECT_URI
-  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/callback` : `http://127.0.0.1:${process.env.PORT || 3000}/callback`);
+  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/callback` : `http://127.0.0.1:${process.env.PORT || 8080}/callback`);
 export const hasCredentials = () => !!(process.env.CLIO_CLIENT_ID && process.env.CLIO_CLIENT_SECRET);
 export const hasToken = () => !!(process.env.CLIO_ACCESS_TOKEN || kv.get('clio_token'));
 export const disconnect = () => kv.set('clio_token', null);

@@ -16,9 +16,8 @@ import { ask } from './ask/rag.js';
 import { ensurePdf, locate } from './ingest/pagebox.js';
 
 const run = promisify(execFile);
-// Listen where the Clio app's registered redirect URI points (127.0.0.1:3000/callback by default).
 const REDIRECT = new URL(redirectUri());
-const PORT = Number(process.env.PORT || REDIRECT.port || 3000);
+const PORT = Number(process.env.PORT || 8080);
 process.env.PORT = String(PORT);
 const PUBLIC = path.resolve('public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
@@ -201,5 +200,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const HOST = process.env.HOST || (process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : '127.0.0.1');
+const HOST = '0.0.0.0';
 server.listen(PORT, HOST, () => console.log(`ROSS on ${process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://127.0.0.1:${PORT}`}${process.env.APP_PASSWORD ? ' (password on)' : ''}  (Clio: ${clioMode()}, AI: ${process.env.ANTHROPIC_API_KEY ? 'on' : 'off'})`));

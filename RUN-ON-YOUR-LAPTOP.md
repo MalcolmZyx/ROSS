@@ -1,6 +1,6 @@
 # Run CaseLight on your laptop (5 steps)
 
-The app has to run on your own computer, because Clio sends you back to `http://127.0.0.1:3000/callback` after you log in, and that address means "this computer".
+The app has to run on your own computer, because Clio sends you back to `http://127.0.0.1:8080/callback` after you log in, and that address means "this computer".
 
 ## 1. Install Node (once)
 Go to https://nodejs.org, click the big **LTS** button, install it like any app.
@@ -28,7 +28,7 @@ npm start
 Leave that window open.
 
 ## 5. Open it
-Go to http://127.0.0.1:3000 in your browser. The first load takes about 10 seconds.
+Go to http://127.0.0.1:8080 in your browser. The first load takes about 10 seconds.
 Click **Connect Clio** (top right), log in to Clio, click **Allow**. You come back to CaseLight, now reading your real Clio account.
 
 ## 6. Anthropic API key (optional, makes Ask and the summary written by Claude)

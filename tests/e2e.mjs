@@ -1,10 +1,10 @@
 // End-to-end walkthrough of every flow in the design deck, driven in real Chrome.
-// Run with the server up:  node tests/e2e.mjs   (BASE=http://127.0.0.1:3000 by default)
+// Run with the server up:  node tests/e2e.mjs   (BASE=http://127.0.0.1:8080 by default)
 // Lawyer journey (deck p.8 left) then doctor journey (p.8 right), then the loop closing back on the Case screen.
 import { chromium } from 'playwright-core';
 import fs from 'node:fs/promises';
 
-const BASE = process.env.BASE || 'http://127.0.0.1:3000';
+const BASE = process.env.BASE || 'http://127.0.0.1:8080';
 const SHOTS = new URL('../test-results/', import.meta.url).pathname;
 await fs.mkdir(SHOTS, { recursive: true });
 

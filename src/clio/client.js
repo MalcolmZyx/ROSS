@@ -18,7 +18,7 @@ export class ClioReadOnlyClient {
       if (!token) throw Object.assign(new Error('Not connected to Clio. Visit /auth/clio to connect.'), { status: 401 });
       return new ClioReadOnlyClient({ baseUrl: process.env.CLIO_BASE_URL || `${CLIO_BASE}/api/v4`, token });
     }
-    const port = process.env.PORT || 3000;
+    const port = process.env.PORT || 8080;
     return new ClioReadOnlyClient({ baseUrl: `http://127.0.0.1:${port}/replica/api/v4`, token: 'replica-token' });
   }
 

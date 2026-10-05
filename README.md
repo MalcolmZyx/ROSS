@@ -13,10 +13,10 @@ CaseLight reads one matter out of Clio Manage (GET only, never a write), digests
 ```bash
 npm install --no-bin-links     # one dependency: @anthropic-ai/sdk
 cp .env.example .env           # then fill in your Clio app key and secret
-npm start                      # http://127.0.0.1:3000
+npm start                      # http://127.0.0.1:8080
 ```
 
-Open http://127.0.0.1:3000. It starts on the bundled Clio replica of the Sapini file. Click **Connect Clio**, approve in Clio, and Clio sends you back to `http://127.0.0.1:3000/callback`; CaseLight then re-reads the matter from your real Clio account (GET only). The server listens on the port of `CLIO_REDIRECT_URI`, so it must match the redirect URI registered on your Clio app exactly.
+Open http://127.0.0.1:8080. It starts on the bundled Clio replica of the Sapini file. Click **Connect Clio**, approve in Clio, and Clio sends you back to `http://127.0.0.1:8080/callback`; CaseLight then re-reads the matter from your real Clio account (GET only). The server listens on `PORT` (default `8080`), so the callback URL registered in your Clio app must match `CLIO_REDIRECT_URI`.
 
 Put the `Sapini documents` folder from the Swans case-materials zip into `fixtures/` (the replica serves those PDFs as Clio downloads; live mode downloads them from Clio instead).
 
@@ -25,7 +25,7 @@ Requires Node 22.5+ (for `node:sqlite`) and `poppler-utils` + `tesseract-ocr` on
 | Variable | What it does |
 | --- | --- |
 | `CLIO_CLIENT_ID`, `CLIO_CLIENT_SECRET` | Your Clio app's key and secret (developers.clio.com). Keep them in `.env`, which git ignores. |
-| `CLIO_REDIRECT_URI` | Must match the Clio app exactly. Default `http://127.0.0.1:3000/callback`. |
+| `CLIO_REDIRECT_URI` | Must match the Clio app exactly. Default `http://127.0.0.1:8080/callback`. |
 | `CLIO_BASE` | Region host: `https://app.clio.com` (default), `eu.app.clio.com`, `ca.app.clio.com`, `au.app.clio.com`. |
 | `CLIO_MODE` | `auto` (default: replica until you connect, then live), `live`, or `replica`. `CLIO_ACCESS_TOKEN` skips OAuth. |
 | `CLIO_MATTER_ID` / `CLIO_MATTER_QUERY` | Which matter to read (default: search for "Sapini"). |
