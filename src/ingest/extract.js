@@ -57,8 +57,8 @@ export async function extractPdf(buf, { onProgress } = {}) {
   await fs.writeFile(file, buf);
   const n = await pageCount(file);
   let done = 0;
-  // OCR can be memory-heavy; process one page at a time on small hosted instances.
-  const pages = await pool([...Array(n).keys()].map(k => k + 1), 1, async (page) => {
+  // Keep OCR parallelism low: Railway has 2 vCPUs and 1 GB of memory.
+  const pages = await pool([...Array(n).keys()].map(k => k + 1), 2, async (page) => {
     let text = await nativeText(file, page);
     let method = 'native';
     if (text.replace(/\s/g, '').length < MIN_NATIVE_CHARS) { text = await ocrPage(file, page, tmp); method = 'ocr'; }
