@@ -7,7 +7,8 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env --no-warnings src/server.js",
-    "dev": "node --no-warnings --watch src/server.js"
+    "dev": "node --no-warnings --watch src/server.js",
+    "precompute:demo-ocr": "node --no-warnings scripts/precompute-demo-ocr.js"
   },
   "author": "",
   "license": "ISC",

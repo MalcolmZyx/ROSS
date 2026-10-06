@@ -6,6 +6,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ClioReadOnlyClient } from '../clio/client.js';
+import { withPdfWorker } from './pdf-workers.js';
 
 const run = promisify(execFile);
 const DIR = () => path.resolve('data/pages');
@@ -17,7 +18,14 @@ export async function ensurePdf(docId) {
   try { await fs.access(pdf); } catch {
     await fs.mkdir(DIR(), { recursive: true });
     const clio = await ClioReadOnlyClient.fromEnv(); // GET only
-    await fs.writeFile(pdf, await clio.download(docId));
+    const tmp = `${pdf}.${process.pid}.tmp`;
+    try {
+      await clio.downloadToFile(docId, tmp);
+      await fs.rename(tmp, pdf);
+    } catch (error) {
+      await fs.rm(tmp, { force: true });
+      throw error;
+    }
   }
   return pdf;
 }
@@ -25,31 +33,37 @@ export async function ensurePdf(docId) {
 async function wordBoxes(docId, page) {
   const cache = path.join(DIR(), `${docId}-${page}.words.json`);
   try { return JSON.parse(await fs.readFile(cache, 'utf8')); } catch {}
-  const pdf = await ensurePdf(docId);
-  let words = [];
-  const { stdout } = await run('pdftotext', ['-bbox', '-f', String(page), '-l', String(page), pdf, '-'], { maxBuffer: 1 << 26 });
-  const dim = stdout.match(/<page width="([\d.]+)" height="([\d.]+)"/);
-  if (dim) {
-    const W = Number(dim[1]), H = Number(dim[2]);
-    for (const m of stdout.matchAll(/<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)<\/word>/g)) {
-      words.push({ t: norm(unesc(m[5])), x: m[1] / W, y: m[2] / H, w: (m[3] - m[1]) / W, h: (m[4] - m[2]) / H });
+  return withPdfWorker(async () => {
+    try { return JSON.parse(await fs.readFile(cache, 'utf8')); } catch {}
+    const pdf = await ensurePdf(docId);
+    let words = [];
+    const { stdout } = await run('pdftotext', ['-bbox', '-f', String(page), '-l', String(page), pdf, '-'], { maxBuffer: 1 << 26 });
+    const dim = stdout.match(/<page width="([\d.]+)" height="([\d.]+)"/);
+    if (dim) {
+      const W = Number(dim[1]), H = Number(dim[2]);
+      for (const m of stdout.matchAll(/<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)<\/word>/g)) {
+        words.push({ t: norm(unesc(m[5])), x: m[1] / W, y: m[2] / H, w: (m[3] - m[1]) / W, h: (m[4] - m[2]) / H });
+      }
     }
-  }
-  if (words.filter(w => w.t).length < 8) {
-    // Scanned page: no text layer, so read word positions with tesseract.
-    const base = path.join(DIR(), `${docId}-${page}.ocr`);
-    await run('pdftoppm', ['-r', '200', '-png', '-f', String(page), '-l', String(page), '-singlefile', pdf, base]);
-    const { stdout: tsv } = await run('tesseract', [`${base}.png`, 'stdout', '--psm', '3', 'tsv'], { maxBuffer: 1 << 26, env: { ...process.env, OMP_THREAD_LIMIT: '1' } });
-    const rows = tsv.split('\n').slice(1).map(l => l.split('\t'));
-    const pageRow = rows.find(r => r[0] === '1');
-    const W = Number(pageRow?.[8]) || 1, H = Number(pageRow?.[9]) || 1;
-    words = rows.filter(r => r[0] === '5' && r[11]?.trim()).map(r => ({ t: norm(r[11]), x: r[6] / W, y: r[7] / H, w: r[8] / W, h: r[9] / H }));
-    await fs.rm(`${base}.png`, { force: true });
-  }
-  words = words.filter(w => w.t);
-  await fs.mkdir(DIR(), { recursive: true });
-  await fs.writeFile(cache, JSON.stringify(words));
-  return words;
+    if (words.filter(w => w.t).length < 8) {
+      // Scanned page: read word positions with tesseract.
+      const base = path.join(DIR(), `${docId}-${page}.ocr`);
+      await run('pdftoppm', ['-r', '150', '-png', '-f', String(page), '-l', String(page), '-singlefile', pdf, base]);
+      try {
+        const { stdout: tsv } = await run('tesseract', [`${base}.png`, 'stdout', '--psm', '3', 'tsv'], { maxBuffer: 1 << 26, env: { ...process.env, OMP_THREAD_LIMIT: '1' } });
+        const rows = tsv.split('\n').slice(1).map(l => l.split('\t'));
+        const pageRow = rows.find(r => r[0] === '1');
+        const W = Number(pageRow?.[8]) || 1, H = Number(pageRow?.[9]) || 1;
+        words = rows.filter(r => r[0] === '5' && r[11]?.trim()).map(r => ({ t: norm(r[11]), x: r[6] / W, y: r[7] / H, w: r[8] / W, h: r[9] / H }));
+      } finally {
+        await fs.rm(`${base}.png`, { force: true });
+      }
+    }
+    words = words.filter(w => w.t);
+    await fs.mkdir(DIR(), { recursive: true });
+    await fs.writeFile(cache, JSON.stringify(words));
+    return words;
+  });
 }
 
 /** Rectangles (page fractions) covering the best match for `passage` on the page, or [] if it cannot be placed. */

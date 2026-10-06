@@ -2,9 +2,10 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { createReadStream } from 'node:fs';
 import { handleReplica } from './clio/replica.js';
 import { authorizeUrl, exchangeCode, redirectUri, hasCredentials, clioMode, disconnect, CLIO_BASE } from './clio/oauth.js';
 import { ClioReadOnlyClient } from './clio/client.js';
@@ -14,6 +15,7 @@ import { providerView, createShare, getShare, listShares, logView, revokeShare, 
 import { kv } from './db.js';
 import { ask } from './ask/rag.js';
 import { ensurePdf, locate } from './ingest/pagebox.js';
+import { withPdfWorker } from './ingest/pdf-workers.js';
 
 const run = promisify(execFile);
 const REDIRECT = new URL(redirectUri());
@@ -22,7 +24,7 @@ process.env.PORT = String(PORT);
 const PUBLIC = path.resolve('public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
 
-let state = { caseFile: null, digest: null, syncing: null, progress: null };
+let state = { caseFile: null, digest: null, syncing: null, progress: null, jobId: null };
 let syncTask = null;
 
 async function ensureCase() {
@@ -52,8 +54,11 @@ async function doSync() {
   return task;
 }
 
-function startBackgroundSync() {
+function startBackgroundSync(jobId = randomUUID()) {
+  if (syncTask) return state.jobId;
+  state.jobId = jobId;
   doSync().catch(e => { state.lastError = e.message; console.error(e); });
+  return jobId;
 }
 
 const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -75,11 +80,12 @@ const routes = [
     json(res, 200, { ...digest, changes });
   }],
   ['POST', /^\/api\/sync$/, async (req, res) => {
-    startBackgroundSync();
-    json(res, 202, { ok: true, syncing: true });
+    const jobId = startBackgroundSync();
+    json(res, 202, { status: 'processing', jobId });
   }],
   ['GET', /^\/api\/sync\/progress$/, async (req, res) => json(res, 200, {
-    syncing: !!state.syncing, progress: state.progress, ready: !!state.digest, error: state.lastError || null,
+    status: state.lastError ? 'failed' : state.digest ? 'complete' : state.syncing ? 'processing' : 'idle',
+    jobId: state.jobId, syncing: !!state.syncing, progress: state.progress, ready: !!state.digest, error: state.lastError || null,
   })],
   ['POST', /^\/api\/seen$/, async (req, res) => { const { caseFile } = await ensureCase(); markSeen(caseFile, userKey(req)); json(res, 200, { ok: true }); }],
   ['GET', /^\/api\/doc\/([\w:%]+)\/pages$/, async (req, res, m) => {
@@ -93,7 +99,7 @@ const routes = [
     try { await fs.access(file); } catch {
       await fs.mkdir(path.dirname(file), { recursive: true });
       const pdf = await ensurePdf(docId);
-      await run('pdftoppm', ['-r', '110', '-png', '-f', page, '-l', page, '-singlefile', pdf, file.replace(/\.png$/, '')]);
+      await withPdfWorker(() => run('pdftoppm', ['-r', '110', '-png', '-f', page, '-l', page, '-singlefile', pdf, file.replace(/\.png$/, '')]));
     }
     serveFile(res, file);
   }],
@@ -101,8 +107,11 @@ const routes = [
   ['GET', /^\/media\/doc\/(\d+)\.pdf$/, async (req, res, m) => {
     const { caseFile } = await ensureCase();
     if (!caseFile.documents.some(d => d.clioId === Number(m[1]))) return json(res, 404, { error: 'not in this matter' });
-    const buf = await fs.readFile(await ensurePdf(m[1]));
-    res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': 'inline', 'cache-control': 'no-cache' }); res.end(buf);
+    const pdf = await ensurePdf(m[1]);
+    res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': 'inline', 'cache-control': 'no-cache' });
+    const stream = createReadStream(pdf);
+    stream.on('error', error => { console.error(error); res.destroy(error); });
+    stream.pipe(res);
   }],
   // Where a cited passage sits on a page, as page fractions, for the highlight overlay.
   ['GET', /^\/api\/doc\/(\d+)\/page\/(\d+)\/locate$/, async (req, res, m, url) => {
@@ -173,15 +182,16 @@ const routes = [
   ['POST', /^\/api\/clio\/demo$/, async (req, res) => {
     kv.set('clio_mode', 'replica');
     const previousSync = syncTask;
-    state = { caseFile: null, digest: null, syncing: null, progress: null };
+    const jobId = randomUUID();
+    state = { caseFile: null, digest: null, syncing: null, progress: null, jobId };
     if (previousSync) state.syncing = previousSync;
     const startDemo = async () => {
       if (previousSync) await previousSync.catch(() => {});
-      state = { caseFile: null, digest: null, syncing: null, progress: null };
-      startBackgroundSync();
+      state = { caseFile: null, digest: null, syncing: null, progress: null, jobId };
+      startBackgroundSync(jobId);
     };
     startDemo().catch(e => { state.lastError = e.message; console.error(e); });
-    json(res, 202, { ok: true, mode: 'replica' });
+    json(res, 202, { status: 'processing', jobId, mode: 'replica' });
   }],
   ['GET', /^\/api\/clio\/status$/, async (req, res) => json(res, 200, {
     mode: clioMode(), credentials: hasCredentials(), base: CLIO_BASE, redirectUri: redirectUri(),

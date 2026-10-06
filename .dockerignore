@@ -1,9 +1,12 @@
-# Uploaded with `railway up --no-gitignore`, so the Sapini PDFs and the OCR cache ship
-# but secrets, local databases and dependencies do not.
+# Keep local caches, secrets, databases and dependencies out of container builds.
 .env
 .git/
 node_modules/
-data/caselight.db*
+data/
+.cache/*
+!.cache/ocr/
+.cache/ocr/*
+!.cache/ocr/*.json.gz
 data/pages/
 data/photos/
 docs/

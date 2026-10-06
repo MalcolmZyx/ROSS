@@ -1,5 +1,9 @@
 node_modules/
 data/
+.cache/*
+!.cache/ocr/
+.cache/ocr/*
+!.cache/ocr/*.json.gz
 fixtures/
 .env
 test-results/

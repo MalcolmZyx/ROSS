@@ -2,6 +2,9 @@
 // Rule 3 of the hackathon ("read everything, write nothing") is enforced here, in code:
 // the only verb this client can send is GET. There is no post/patch/delete method to call.
 import { getToken, clioMode, CLIO_BASE } from './oauth.js';
+import { createWriteStream } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 const RETRYABLE = new Set([429, 502, 503, 504]);
 
@@ -22,17 +25,17 @@ export class ClioReadOnlyClient {
     return new ClioReadOnlyClient({ baseUrl: `http://127.0.0.1:${port}/replica/api/v4`, token: 'replica-token' });
   }
 
-  async #fetch(url, { raw = false } = {}) {
+  async #fetch(url) {
     for (let attempt = 0; ; attempt++) {
       this.requests++;
-      const res = await fetch(url, { method: 'GET', headers: { authorization: `Bearer ${this.token}`, accept: raw ? '*/*' : 'application/json' }, redirect: 'follow' });
+      const res = await fetch(url, { method: 'GET', headers: { authorization: `Bearer ${this.token}`, accept: 'application/json' }, redirect: 'follow' });
       if (RETRYABLE.has(res.status) && attempt < 4) {
         const wait = Number(res.headers.get('retry-after') || 2 ** attempt) * 1000;
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
       if (!res.ok) throw Object.assign(new Error(`Clio GET ${url} -> ${res.status} ${await res.text()}`), { status: res.status });
-      return raw ? Buffer.from(await res.arrayBuffer()) : res.json();
+      return res.json();
     }
   }
 
@@ -58,8 +61,25 @@ export class ClioReadOnlyClient {
     return rows;
   }
 
-  download(documentId) {
-    return this.#fetch(this.url(`documents/${documentId}/download`), { raw: true });
+  async downloadToFile(documentId, file) {
+    const url = this.url(`documents/${documentId}/download`);
+    for (let attempt = 0; ; attempt++) {
+      this.requests++;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${this.token}`, accept: '*/*' },
+        redirect: 'follow',
+      });
+      if (RETRYABLE.has(res.status) && attempt < 4) {
+        const wait = Number(res.headers.get('retry-after') || 2 ** attempt) * 1000;
+        await new Promise(resolve => setTimeout(resolve, wait));
+        continue;
+      }
+      if (!res.ok) throw Object.assign(new Error(`Clio GET ${url} -> ${res.status} ${await res.text()}`), { status: res.status });
+      if (!res.body) throw new Error(`Clio GET ${url} returned an empty download stream`);
+      await pipeline(Readable.fromWeb(res.body), createWriteStream(file));
+      return;
+    }
   }
 }
 

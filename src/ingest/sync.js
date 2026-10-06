@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ClioReadOnlyClient, FIELDS } from '../clio/client.js';
 import { CLIO_BASE, clioMode } from '../clio/oauth.js';
-import { extractPdf, extractImages } from './extract.js';
+import { extractPdf, extractImages, readPdfCache } from './extract.js';
 import { db } from '../db.js';
 
 const PHOTO_DIR = path.resolve('data/photos');
@@ -65,16 +65,40 @@ export async function syncMatter({ onProgress = () => {} } = {}) {
   const local = new Map();
   const walk = async dir => { for (const e of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
     const p = path.join(dir, e.name); if (e.isDirectory()) await walk(p); else local.set(e.name, p); } };
+  await walk(path.resolve('Slides & Materials - Shared w- Participants/Sapini Case Materials/Sapini documents'));
   await walk(path.resolve('fixtures'));
   await fs.mkdir(path.resolve('data/pages'), { recursive: true });
   for (const [i, d] of documents.entries()) {
     onProgress('documents', i + 1, documents.length, d.name);
     const localPdf = local.get(d.name);
-    let buf = localPdf ? await fs.readFile(localPdf) : null;
-    if (!buf || (d.size && buf.length !== d.size)) buf = await clio.download(d.id);
-    // Keep each PDF on disk so page images and highlights never re-download it from Clio.
-    await fs.writeFile(path.resolve('data/pages', `${d.id}.pdf`), buf, { flag: 'wx' }).catch(() => {});
-    const text = await extractPdf(buf, {
+    const pdf = path.resolve('data/pages', `${d.id}.pdf`);
+    let havePdf = false;
+    try {
+      const existing = await fs.stat(pdf);
+      havePdf = !!d.size && existing.size === d.size;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (!havePdf) {
+      await fs.rm(pdf, { force: true });
+      const tmp = `${pdf}.${process.pid}.tmp`;
+      try {
+        let copiedLocal = false;
+        if (localPdf) {
+          const localStat = await fs.stat(localPdf);
+          if (!d.size || localStat.size === d.size) {
+            await fs.copyFile(localPdf, tmp);
+            copiedLocal = true;
+          }
+        }
+        if (!copiedLocal) await clio.downloadToFile(d.id, tmp);
+        await fs.rename(tmp, pdf);
+      } catch (error) {
+        await fs.rm(tmp, { force: true });
+        throw error;
+      }
+    }
+    const text = await extractPdf(pdf, {
       onProgress: (page, total) => onProgress('documents', i + 1, documents.length, d.name, page, total),
     });
     docs.push({ id: `doc:${d.id}`, clioId: d.id, name: d.name, folder: d.parent?.name, receivedAt: (d.received_at || d.created_at)?.slice(0, 10),
@@ -82,7 +106,7 @@ export async function syncMatter({ onProgress = () => {} } = {}) {
     items.push({ id: `doc:${d.id}`, kind: 'document', date: (d.received_at || d.created_at)?.slice(0, 10), title: prettyDocName(d.name),
       body: `${d.parent?.name || ''} · ${text.pageCount} pages`, etag: d.etag, clioUrl: link('documents') });
     if (!photo && /photo[-_ ]?id|driver|licen[cs]e/i.test(d.name)) {
-      const imgs = await extractImages(buf);
+      const imgs = await extractImages(pdf);
       if (imgs.length) {
         await fs.mkdir(PHOTO_DIR, { recursive: true });
         const biggest = imgs.sort((a, b) => b.length - a.length)[0];
@@ -132,6 +156,7 @@ export function latestSnapshot(matterId) {
 export async function documentPages(caseFile, docId) {
   const d = caseFile.documents.find(x => x.id === docId);
   if (!d) return null;
-  const cache = path.join(process.env.TEXT_CACHE_DIR || path.resolve('data/text-cache'), `${d.sha256}.json`);
-  return { ...d, ...JSON.parse(await fs.readFile(cache, 'utf8')) };
+  const extracted = await readPdfCache(d.sha256);
+  if (!extracted) throw new Error(`OCR cache is missing for document ${d.name}`);
+  return { ...d, ...extracted };
 }

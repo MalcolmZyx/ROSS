@@ -20,6 +20,16 @@ Open http://127.0.0.1:8080. It starts on the bundled Clio replica of the Sapini 
 
 The local Clio replica reads `sapini-clio-data.json` and its PDFs from `Slides & Materials - Shared w- Participants/Sapini Case Materials/` by default (or `fixtures/` if that contains the JSON). It serves PDF bytes through the same Clio document-download endpoint used by live sync, so demo mode uses the same ingestion, OCR, citations and document viewer. Include this folder in the Railway deployment.
 
+### Prepare the demo OCR cache before deploying
+
+The first sync otherwise has to extract/OCR roughly 522 PDF pages. To avoid doing that work on Railway, run this once on a computer with Poppler and Tesseract installed:
+
+```bash
+npm run precompute:demo-ocr
+```
+
+This verifies each PDF against the checked-in case manifest and writes compressed per-document OCR caches to `.cache/ocr/*.json.gz`. It replaces contact names and direct contact identifiers in the extracted page text before writing the caches. This is limited redaction, not anonymization: the original PDFs remain unchanged, and indirect details may still identify people. The application reads these caches automatically; `.gitignore`, `.dockerignore`, and `.railwayignore` allow the compressed caches through, so they can be deployed without a Railway volume. Keep the repository and demo access restricted and do not treat the redacted text as safe for public release. Use `npm run precompute:demo-ocr -- --refresh` to rebuild OCR from the PDFs; without `--refresh`, existing compressed caches are reused and redacted again. The initial OCR still takes time on the computer doing the precompute. It avoids repeating that work on Railway, but hashing/copying the PDFs and building the remaining case digest still take time, so measure actual Railway startup rather than assuming it will be under 10 seconds.
+
 Requires Node 22.5+ (for `node:sqlite`) and `poppler-utils` + `tesseract-ocr` on the PATH (`apt install poppler-utils tesseract-ocr`, `brew install poppler tesseract`).
 
 | Variable | What it does |
@@ -42,11 +52,11 @@ The build reads Clio through `src/clio/client.js`, a client that can only send G
 
 ```bash
 railway init                       # new project
-railway up --no-gitignore          # ships the Sapini PDFs and OCR cache; .railwayignore keeps .env, node_modules and local DBs out
+railway up --no-gitignore          # ships the Sapini PDFs; .railwayignore excludes secrets, dependencies and local caches
 railway domain                     # gives https://<name>.up.railway.app
 ```
 
-Set these service variables in Railway: `CLIO_CLIENT_ID`, `CLIO_CLIENT_SECRET`, `APP_PASSWORD` (the attorney side asks for it; doctor links stay open), and optionally `ANTHROPIC_API_KEY`. Leave `CLIO_REDIRECT_URI` unset: on Railway it defaults to `https://$RAILWAY_PUBLIC_DOMAIN/callback`. Add that exact URL to the Clio app's redirect URIs in the Clio developer portal, or Clio rejects the login. The welcome screen offers **Login to Clio** and **Demo mode** as separate choices; demo mode feeds the included Sapini case and PDFs through the local Clio v4 replica's same read/download endpoints. Sync runs in the background with polled progress, processing one PDF and one page at a time to keep CPU use controlled on Railway's 2-vCPU, 1-GB plan. If a live sync fails after login, the case screen also offers a demo option. The Dockerfile installs poppler and tesseract. SQLite lives in the container, so a redeploy forgets the Clio connection and share links; mount a volume and set `DB_FILE=/data/caselight.db` to keep them.
+Set these service variables in Railway: `CLIO_CLIENT_ID`, `CLIO_CLIENT_SECRET`, `APP_PASSWORD` (the attorney side asks for it; doctor links stay open), and optionally `ANTHROPIC_API_KEY`. Leave `CLIO_REDIRECT_URI` unset: on Railway it defaults to `https://$RAILWAY_PUBLIC_DOMAIN/callback`. Add that exact URL to the Clio app's redirect URIs in the Clio developer portal, or Clio rejects the login. The welcome screen offers **Login to Clio** and **Demo mode** as separate choices; demo mode feeds the included Sapini case and PDFs through the local Clio v4 replica's same read/download endpoints. Sync runs in the background with polled progress, keeps PDF bytes on disk, caps PDF subprocess work at two tasks across the process, caches each extracted page under `.cache/ocr`, and runs the LLM digest after extraction. For cache reuse across redeploys, attach a Railway volume and set `TEXT_CACHE_DIR` to a path on that volume (for example `/data/ocr`). If a live sync fails after login, the case screen also offers a demo option. The Dockerfile installs poppler and tesseract. SQLite lives in the container, so a redeploy forgets the Clio connection and share links; mount a volume and set `DB_FILE=/data/caselight.db` to keep them.
 
 ### Ask
 
@@ -94,7 +104,7 @@ Without an API key everything still runs on the offline engine (`heuristic.js`),
 
 - **Built with:** Node.js 22 (no web framework), vanilla ES modules and hand-written CSS/SVG on the front end, `@anthropic-ai/sdk`, poppler, tesseract.
 - **Running on:** a single Node process (`npm start`), localhost.
-- **Data outside Clio:** SQLite file at `data/caselight.db` (snapshots, last-seen markers, AI cache, share links, view log); OCR text cache in `data/text-cache/`; rendered page images in `data/pages/`.
+- **Data outside Clio:** SQLite file at `data/caselight.db` (snapshots, last-seen markers, AI cache, share links, view log); OCR text cache in `.cache/ocr/`; rendered page images in `data/pages/`.
 
 ## Where to look first
 

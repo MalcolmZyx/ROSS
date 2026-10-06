@@ -155,7 +155,15 @@ export function handleReplica(req, res, url) {
   if (coll === 'documents' && parts[2] === 'download') {
     const doc = d.documents.find(x => x.id === Number(parts[1]));
     if (!doc) return send(res, 404, { error: { type: 'NotFound' } }), true;
-    return send(res, 200, fs.readFileSync(doc._local_path), 'application/pdf'), true;
+    res.writeHead(200, { 'content-type': 'application/pdf' });
+    const stream = fs.createReadStream(doc._local_path);
+    stream.on('error', error => {
+      console.error(error);
+      if (!res.headersSent) send(res, 500, { error: { type: 'DocumentReadError' } });
+      else res.destroy(error);
+    });
+    stream.pipe(res);
+    return true;
   }
   if (!(coll in d)) return send(res, 404, { error: { type: 'NotFound', message: coll } }), true;
   if (parts[1]) {
