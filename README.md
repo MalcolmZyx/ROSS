@@ -116,7 +116,7 @@ Without an API key everything still runs on the offline engine (`heuristic.js`),
 
 ## Honest notes
 
-- The demo in this repo runs against the Clio replica because the build environment has no Clio account; switch `CLIO_MODE=live` to read the team's Clio. Clio web links (`Open in Clio`) point at `app.clio.com/nc/#/matters/<id>/...`.
+- The demo in this repo runs against the Clio replica because the build environment has no Clio account; switch `CLIO_MODE=live` to read the team's Clio. Clio web links (`Open in Clio`) point at `app.clio.com/nc/#/matters/<id>/...`. [Post hackathon]
 - The waterfall's contingency fee (33.3%) is an assumption and is labelled as one.
 - "Reply to the firm" on the provider page is a placeholder button; replies go by email today.
 - Offline injury extraction is keyword-based and noisier than the Claude path; findings always link to the page so the reader can check.
